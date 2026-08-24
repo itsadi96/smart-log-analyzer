@@ -23,20 +23,15 @@
 
 ![Dashboard](screenshots/dashboard.png)
 
-### Log Table with Anomaly Flags
-> Flagged entries have a red border. Columns include IP, Event, Status, Severity, User Agent, and Location.
+### Log Entry Details
+> Detailed view of a parsed log entry with raw data and formatting.
 
-![Log Table](screenshots/log-table.png)
+![Log Entry](screenshots/detail-modal.png)
 
-### Flagged Entry Detail Modal
-> Click any row to see parsed fields, flagging reasons, and AI-generated explanations.
+### AI Explanation Queued
+> The system preparing to fetch plain English explanation for the flagged anomaly.
 
-![Detail Modal](screenshots/detail-modal.png)
-
-### Footer with Tech Stack
-> Pagination controls and technology badges.
-
-![Footer](screenshots/footer.png)
+![AI Queued](screenshots/ai-modal.png)
 
 ---
 
