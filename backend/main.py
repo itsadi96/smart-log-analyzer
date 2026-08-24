@@ -1,7 +1,11 @@
 """FastAPI backend for the Smart Log Analyzer."""
 import os
+import sys
 import threading
 from pathlib import Path
+
+# Fix path for Render deployment (when run from repo root)
+sys.path.insert(0, str(Path(__file__).parent))
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
