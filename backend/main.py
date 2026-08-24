@@ -45,7 +45,7 @@ def index():
 def ingest_sample():
     clear_all()
     # Use real assignment data if available, fall back to synthetic generator
-    assignment_csv = Path(__file__).parent.parent / "data" / "log-data.csv"
+    assignment_csv = Path(__file__).parent / "data" / "log-data.csv"
     if assignment_csv.exists():
         rows, skipped = load_file(str(assignment_csv))
     else:
