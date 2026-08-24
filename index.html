@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Log Analyzer — Anomaly Detection Dashboard</title>
+<meta name="description" content="Rule-based anomaly detection with AI-powered explanations for log analysis">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+/* ─── Design Tokens ──────────────────────────────────────────── */
+:root {
+  --bg-base: #06080d;
+  --bg-surface: rgba(14, 17, 26, 0.85);
+  --bg-card: rgba(20, 24, 38, 0.72);
+  --bg-card-hover: rgba(30, 36, 56, 0.85);
+  --bg-input: rgba(16, 20, 32, 0.9);
+  --border: rgba(255, 255, 255, 0.06);
+  --border-glow: rgba(59, 130, 246, 0.15);
+  --fg: #e8ecf4;
+  --fg-muted: #6b7a94;
+  --fg-dim: #3d4a5e;
+  --accent: #3b82f6;
+  --accent-glow: rgba(59, 130, 246, 0.25);
+  --red: #ef4444;
+  --red-soft: rgba(239, 68, 68, 0.12);
+  --amber: #f59e0b;
+  --amber-soft: rgba(245, 158, 11, 0.12);
+  --green: #10b981;
+  --green-soft: rgba(16, 185, 129, 0.12);
+  --cyan: #06b6d4;
+  --purple: #8b5cf6;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --glass-blur: blur(20px);
+  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --shadow-card: 0 4px 24px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.2);
+  --shadow-glow: 0 0 40px rgba(59,130,246,0.08);
+}
+
+/* ─── Reset & Base ───────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg-base);
+  color: var(--fg);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13.5px;
+  line-height: 1.6;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(59,130,246,0.12), transparent),
+              radial-gradient(ellipse 60% 50% at 80% 100%, rgba(139,92,246,0.08), transparent),
+              radial-gradient(ellipse 40% 30% at 20% 60%, rgba(16,185,129,0.04), transparent);
+  pointer-events: none; z-index: 0;
+}
+
+.container { max-width: 1320px; margin: 0 auto; padding: 24px 28px; position: relative; z-index: 1; }
+
+/* ─── Header ─────────────────────────────────────────────────── */
+.header { margin-bottom: 32px; display: flex; align-items: flex-start; gap: 16px; }
+.header-icon {
+  width: 48px; height: 48px; border-radius: 14px;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; flex-shrink: 0;
+  box-shadow: 0 4px 20px rgba(59,130,246,0.3);
+  animation: iconPulse 3s ease-in-out infinite;
+}
+@keyframes iconPulse {
+  0%, 100% { box-shadow: 0 4px 20px rgba(59,130,246,0.3); }
+  50% { box-shadow: 0 4px 30px rgba(59,130,246,0.5); }
+}
+.header h1 {
+  font-size: 30px; font-weight: 800; letter-spacing: -0.5px;
+  background: linear-gradient(135deg, #ffffff, var(--accent), var(--purple));
+  background-size: 200% 200%;
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradientShift 6s ease infinite;
+}
+@keyframes gradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+.header .subtitle {
+  color: var(--fg-muted); font-size: 13px; margin-top: 4px;
+  max-width: 600px;
+}
+.header .subtitle span { color: var(--accent); font-weight: 600; }
+
+/* ─── Glass Cards ────────────────────────────────────────────── */
+.glass {
+  background: var(--bg-card);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+/* ─── Stats Ribbon ───────────────────────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px; margin-bottom: 24px;
+}
+.stat-card {
+  padding: 20px 22px;
+  transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
+  position: relative; overflow: hidden;
+  display: flex; align-items: flex-start; gap: 14px;
+}
+.stat-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: var(--radius);
+  padding: 1px;
+  background: linear-gradient(135deg, transparent 40%, rgba(255,255,255,0.06));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  pointer-events: none;
+}
+.stat-card::after {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0; transition: opacity var(--transition);
+}
+.stat-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-glow); }
+.stat-card:hover::after { opacity: 1; }
+.stat-icon {
+  font-size: 20px; width: 40px; height: 40px;
+  border-radius: 10px; display: flex;
+  align-items: center; justify-content: center; flex-shrink: 0;
+}
+.stat-card.accent .stat-icon { background: rgba(59,130,246,0.12); }
+.stat-card.red .stat-icon { background: var(--red-soft); }
+.stat-card.green .stat-icon { background: var(--green-soft); }
+.stat-card.amber .stat-icon { background: var(--amber-soft); }
+.stat-card.purple .stat-icon { background: rgba(139,92,246,0.12); }
+.stat-content { flex: 1; }
+.stat-value {
+  font-size: 28px; font-weight: 800; letter-spacing: -1px;
+  line-height: 1.2;
+}
+.stat-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--fg-muted); margin-top: 2px;
+}
+.stat-card.accent .stat-value { color: var(--accent); }
+.stat-card.red .stat-value { color: var(--red); }
+.stat-card.green .stat-value { color: var(--green); }
+.stat-card.amber .stat-value { color: var(--amber); }
+.stat-card.purple .stat-value { color: var(--purple); }
+
+/* ─── Charts Section ─────────────────────────────────────────── */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 14px; margin-bottom: 24px;
+}
+.chart-card { padding: 20px; }
+.chart-card h3 {
+  font-size: 13px; font-weight: 700; color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 14px;
+}
+.chart-wrap { position: relative; height: 220px; }
+@media (max-width: 860px) {
+  .charts-grid { grid-template-columns: 1fr; }
+}
+
+/* ─── Control Bar ────────────────────────────────────────────── */
+.controls {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  align-items: center; margin-bottom: 18px;
+}
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 16px; border: none; border-radius: var(--radius-sm);
+  font-family: inherit; font-size: 12.5px; font-weight: 600;
+  cursor: pointer; transition: all var(--transition);
+  text-decoration: none; white-space: nowrap;
+}
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), #2563eb);
+  color: #fff; box-shadow: 0 2px 12px rgba(59,130,246,0.3);
+}
+.btn-primary:hover { box-shadow: 0 4px 20px rgba(59,130,246,0.45); transform: translateY(-1px); }
+.btn-ghost {
+  background: var(--bg-card); color: var(--fg);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover { background: var(--bg-card-hover); border-color: var(--border-glow); }
+.btn-ai {
+  background: linear-gradient(135deg, var(--green-soft), rgba(16,185,129,0.06));
+  color: var(--green); border: 1px solid rgba(16,185,129,0.2);
+}
+.btn-ai:hover { border-color: rgba(16,185,129,0.4); box-shadow: 0 0 20px rgba(16,185,129,0.1); }
+
+.input, .select {
+  background: var(--bg-input); border: 1px solid var(--border);
+  color: var(--fg); border-radius: var(--radius-sm);
+  padding: 8px 12px; font-family: inherit; font-size: 12.5px;
+  transition: border-color var(--transition);
+  outline: none;
+}
+.input:focus, .select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+.input { min-width: 200px; }
+.upload-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 16px; border: 1px dashed var(--border); border-radius: var(--radius-sm);
+  color: var(--fg-muted); font-size: 12.5px; font-weight: 500; cursor: pointer;
+  transition: all var(--transition);
+}
+.upload-label:hover { color: var(--fg); border-color: var(--fg-muted); }
+.checkbox-wrap {
+  display: flex; align-items: center; gap: 5px;
+  color: var(--fg-muted); font-size: 12px; cursor: pointer;
+}
+.checkbox-wrap input { accent-color: var(--accent); }
+
+/* ─── Table ──────────────────────────────────────────────────── */
+.table-wrap {
+  border-radius: var(--radius); overflow: hidden;
+  border: 1px solid var(--border);
+}
+table { width: 100%; border-collapse: collapse; background: var(--bg-surface); }
+th {
+  text-align: left; padding: 11px 14px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--fg-dim);
+  background: rgba(10, 12, 20, 0.6);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 2;
+}
+td {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  font-size: 13px; vertical-align: middle;
+  transition: background var(--transition);
+}
+tr { transition: transform var(--transition), background var(--transition); }
+tr:hover td { background: var(--bg-card-hover); cursor: pointer; }
+tr.flagged {
+  background: rgba(239,68,68,0.03);
+}
+tr.flagged td:first-child {
+  box-shadow: inset 3px 0 0 var(--red);
+}
+tr.flagged:hover td {
+  background: rgba(239,68,68,0.07);
+}
+
+/* severity pills */
+.sev {
+  display: inline-block; padding: 2px 9px; border-radius: 99px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em;
+}
+.sev.INFO { background: rgba(59,130,246,0.12); color: #60a5fa; }
+.sev.WARN { background: var(--amber-soft); color: var(--amber); }
+.sev.ERROR { background: var(--red-soft); color: var(--red); }
+.sev.CRITICAL { background: rgba(239,68,68,0.2); color: #fca5a5; }
+
+.score-cell {
+  font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.score-low { color: var(--amber); }
+.score-med { color: #f97316; }
+.score-high { color: var(--red); }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 7px; border-radius: 6px; font-size: 10px; font-weight: 600;
+  margin-left: 6px; vertical-align: middle;
+}
+.badge-ai { background: var(--green-soft); color: var(--green); }
+.badge-pending { background: var(--amber-soft); color: var(--amber); animation: pulse 2s ease-in-out infinite; }
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+/* ─── Pagination ─────────────────────────────────────────────── */
+.pagination {
+  display: flex; align-items: center; justify-content: center;
+  gap: 12px; padding: 16px; color: var(--fg-muted); font-size: 12.5px;
+}
+.pagination .btn { padding: 6px 14px; font-size: 12px; }
+.pagination .page-info { font-variant-numeric: tabular-nums; }
+
+/* ─── Empty State ────────────────────────────────────────────── */
+.empty-state {
+  text-align: center; padding: 60px 20px;
+}
+.empty-icon {
+  font-size: 48px; margin-bottom: 16px; opacity: 0.6;
+  animation: float 3s ease-in-out infinite;
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.empty-state h3 {
+  font-size: 18px; font-weight: 700; margin-bottom: 6px; color: var(--fg);
+}
+.empty-state p { color: var(--fg-muted); font-size: 13px; max-width: 400px; margin: 0 auto; }
+
+/* ─── Detail Modal ───────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.65);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  display: none; align-items: center; justify-content: center;
+  z-index: 100; padding: 20px;
+}
+.modal-overlay.active { display: flex; }
+.modal-panel {
+  background: var(--bg-surface);
+  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  border-radius: 18px; max-width: 680px; width: 100%;
+  max-height: 85vh; overflow-y: auto;
+  padding: 28px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+  animation: modalIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.modal-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 20px;
+}
+.modal-header h3 { font-size: 17px; font-weight: 700; }
+.modal-close {
+  background: transparent; border: none; color: var(--fg-muted);
+  font-size: 20px; cursor: pointer; padding: 4px 8px;
+  border-radius: 6px; transition: all var(--transition);
+}
+.modal-close:hover { background: var(--bg-card); color: var(--fg); }
+.modal-section { margin-bottom: 16px; }
+.modal-label {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--fg-dim); margin-bottom: 6px;
+}
+.modal-raw {
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 10px 14px;
+  font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px;
+  word-break: break-all; color: var(--fg-muted);
+  position: relative;
+}
+.modal-raw .copy-btn {
+  position: absolute; top: 6px; right: 6px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  color: var(--fg-muted); padding: 3px 8px; border-radius: 4px;
+  font-size: 10px; cursor: pointer;
+}
+.modal-raw .copy-btn:hover { color: var(--fg); }
+.reason-chip {
+  display: inline-block; padding: 4px 10px;
+  background: var(--red-soft); border: 1px solid rgba(239,68,68,0.15);
+  border-radius: 6px; font-size: 11.5px; color: #fca5a5;
+  margin: 2px 4px 2px 0;
+}
+.ai-block {
+  border-left: 3px solid var(--green);
+  padding: 12px 16px; margin: 6px 0;
+  background: rgba(16,185,129,0.06);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 13px; line-height: 1.6;
+}
+.ai-block .ai-label {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--green); margin-bottom: 4px;
+}
+.ai-block.warning {
+  border-color: var(--amber);
+  background: rgba(245,158,11,0.06);
+}
+.modal-fields {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+.modal-field-item { font-size: 12px; }
+.modal-field-item .mfl { color: var(--fg-dim); font-size: 10px; text-transform: uppercase; }
+
+/* ─── Toast ──────────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 24px; right: 24px;
+  background: var(--bg-surface);
+  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  padding: 12px 18px; border-radius: var(--radius);
+  font-size: 13px; font-weight: 500;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  z-index: 200;
+  transform: translateY(100px); opacity: 0;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: 360px;
+}
+.toast.visible { transform: translateY(0); opacity: 1; }
+.toast-bar {
+  position: absolute; bottom: 0; left: 0; height: 2px;
+  background: var(--accent); border-radius: 0 0 var(--radius) var(--radius);
+  transition: width linear;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .container { padding: 16px; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .controls { gap: 8px; }
+  .input { min-width: 140px; }
+  table { font-size: 12px; }
+  th, td { padding: 8px 10px; }
+}
+
+/* ─── Footer ─────────────────────────────────────────────────── */
+.site-footer {
+  margin-top: 48px; padding: 28px 0;
+  border-top: 1px solid var(--border);
+  position: relative; z-index: 1;
+}
+.footer-inner {
+  max-width: 1320px; margin: 0 auto; padding: 0 28px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 16px;
+}
+.footer-brand {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 700; font-size: 14px; color: var(--fg-muted);
+}
+.footer-logo { font-size: 18px; }
+.footer-tech {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.tech-badge {
+  padding: 4px 12px; border-radius: 99px;
+  font-size: 11px; font-weight: 600;
+  background: rgba(59,130,246,0.08);
+  border: 1px solid rgba(59,130,246,0.15);
+  color: var(--accent);
+  transition: all var(--transition);
+}
+.tech-badge:hover {
+  background: rgba(59,130,246,0.15);
+  transform: translateY(-1px);
+}
+.footer-copy {
+  font-size: 12px; color: var(--fg-dim);
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-icon">🛡️</div>
+    <div>
+      <h1>Smart Log Analyzer</h1>
+      <p class="subtitle">Rule-based anomaly detection with <span>AI-powered explanations</span>. Detection is deterministic — AI only explains what was flagged.</p>
+    </div>
+  </div>
+
+  <!-- Stats Ribbon -->
+  <div class="stats-grid" id="stats">
+    <div class="stat-card glass accent"><div class="stat-icon">📋</div><div class="stat-content"><div class="stat-value" id="s-total">—</div><div class="stat-label">Log Entries</div></div></div>
+    <div class="stat-card glass red"><div class="stat-icon">🚩</div><div class="stat-content"><div class="stat-value" id="s-flagged">—</div><div class="stat-label">Anomalies Flagged</div></div></div>
+    <div class="stat-card glass green"><div class="stat-icon">🤖</div><div class="stat-content"><div class="stat-value" id="s-explained">—</div><div class="stat-label">AI Explained</div></div></div>
+    <div class="stat-card glass amber"><div class="stat-icon">⚠️</div><div class="stat-content"><div class="stat-value" id="s-invalid">—</div><div class="stat-label">Invalid / Skipped</div></div></div>
+    <div class="stat-card glass purple"><div class="stat-icon">📊</div><div class="stat-content"><div class="stat-value" id="s-rate">—</div><div class="stat-label">Anomaly Rate</div></div></div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-grid">
+    <div class="chart-card glass">
+      <h3>Anomaly Timeline</h3>
+      <div class="chart-wrap"><canvas id="timelineChart"></canvas></div>
+    </div>
+    <div class="chart-card glass">
+      <h3>Severity Distribution</h3>
+      <div class="chart-wrap"><canvas id="severityChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn btn-primary" onclick="ingestSample()" id="btn-load">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Load Sample Data
+    </button>
+    <label class="upload-label">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Upload File
+      <input type="file" id="fileInput" hidden accept=".log,.csv,.txt">
+    </label>
+    <button class="btn btn-ai" onclick="explainNow()" id="btn-ai">✨ Explain Flagged (AI)</button>
+    <div style="flex:1"></div>
+    <input type="text" class="input" id="searchInput" placeholder="Search IP, message, event…" oninput="debounceSearch()">
+    <select class="select" id="sevFilter" onchange="loadLogs()">
+      <option value="">All Severities</option>
+      <option>INFO</option><option>WARN</option><option>ERROR</option><option>CRITICAL</option>
+    </select>
+    <label class="checkbox-wrap"><input type="checkbox" id="invOnly" onchange="loadLogs()"> Invalid only</label>
+  </div>
+
+  <!-- Log Table -->
+  <div class="table-wrap glass" id="tableSection">
+    <table id="logTable">
+      <thead>
+        <tr>
+          <th style="width:36px"></th>
+          <th>Timestamp</th>
+          <th>Source IP</th>
+          <th>Event</th>
+          <th>Status</th>
+          <th>Severity</th>
+          <th>Agent</th>
+          <th>Location</th>
+          <th>Score</th>
+        </tr>
+      </thead>
+      <tbody id="logBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  <div class="pagination" id="pagination" style="display:none">
+    <button class="btn btn-ghost" id="prevBtn" onclick="changePage(-1)">← Prev</button>
+    <span class="page-info" id="pageInfo"></span>
+    <button class="btn btn-ghost" id="nextBtn" onclick="changePage(1)">Next →</button>
+  </div>
+
+  <!-- Empty State -->
+  <div class="empty-state glass" id="emptyState" style="display:none">
+    <div class="empty-icon">📊</div>
+    <h3>No logs loaded yet</h3>
+    <p>Click "Load Sample Data" to load the assignment dataset (2,500+ log entries), or upload your own .log / .csv file.</p>
+  </div>
+</div>
+
+<!-- Footer -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <span class="footer-logo">🛡️</span>
+      <span>Smart Log Analyzer</span>
+    </div>
+    <div class="footer-tech">
+      <span class="tech-badge">Python</span>
+      <span class="tech-badge">FastAPI</span>
+      <span class="tech-badge">SQLite</span>
+      <span class="tech-badge">Chart.js</span>
+      <span class="tech-badge">OpenRouter AI</span>
+    </div>
+    <div class="footer-copy">Built with ❤️</div>
+  </div>
+</footer>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <h3 id="modalTitle">Log Entry</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"><span id="toastText"></span><div class="toast-bar" id="toastBar"></div></div>
+
+<script>
+/* ─── Globals ────────────────────────────────────────────────── */
+let currentPage = 0;
+const PAGE_SIZE = 50;
+let totalRows = 0;
+let searchTimer = null;
+let timelineChart = null;
+let severityChart = null;
+
+/* ─── Utils ──────────────────────────────────────────────────── */
+const $ = s => document.getElementById(s);
+
+function toast(msg, duration = 3500) {
+  const t = $('toast'), txt = $('toastText'), bar = $('toastBar');
+  txt.textContent = msg;
+  bar.style.transition = 'none';
+  bar.style.width = '100%';
+  t.classList.add('visible');
+  requestAnimationFrame(() => {
+    bar.style.transition = `width ${duration}ms linear`;
+    bar.style.width = '0%';
+  });
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => t.classList.remove('visible'), duration);
+}
+
+function debounceSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { currentPage = 0; loadLogs(); }, 300);
+}
+
+function scoreClass(s) {
+  if (s >= 6) return 'score-high';
+  if (s >= 4) return 'score-med';
+  return 'score-low';
+}
+
+function escHtml(s) {
+  const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+}
+
+/* ─── Stats ──────────────────────────────────────────────────── */
+async function refreshStats() {
+  try {
+    const s = await (await fetch('https://smart-log-analyzer-znk4.onrender.com/api/stats')).json();
+    $('s-total').textContent = s.total.toLocaleString();
+    $('s-flagged').textContent = s.flagged.toLocaleString();
+    $('s-explained').textContent = s.explained.toLocaleString();
+    $('s-invalid').textContent = s.invalid.toLocaleString();
+    $('s-rate').textContent = s.total > 0 ? ((s.flagged / s.total) * 100).toFixed(1) + '%' : '—';
+
+    // Show/hide empty state
+    if (s.total === 0) {
+      $('emptyState').style.display = '';
+      $('tableSection').style.display = 'none';
+      $('pagination').style.display = 'none';
+    } else {
+      $('emptyState').style.display = 'none';
+      $('tableSection').style.display = '';
+    }
+  } catch(e) { console.error('stats error', e); }
+}
+
+/* ─── Charts ─────────────────────────────────────────────────── */
+const chartColors = {
+  INFO: '#3b82f6', WARN: '#f59e0b', ERROR: '#ef4444', CRITICAL: '#f87171'
+};
+
+async function refreshCharts() {
+  try {
+    // Timeline
+    const tl = await (await fetch('https://smart-log-analyzer-znk4.onrender.com/api/charts/timeline')).json();
+    let timeData = tl.data;
+
+    // Downsample: if too many points, bucket by hour instead of minute
+    if (timeData.length > 60) {
+      const hourBuckets = {};
+      for (const d of timeData) {
+        const hourKey = d.minute.slice(0, 13) + ':00'; // YYYY-MM-DD HH:00
+        if (!hourBuckets[hourKey]) hourBuckets[hourKey] = { minute: hourKey, max_score: 0, flag_count: 0, sum_score: 0, n: 0 };
+        hourBuckets[hourKey].max_score = Math.max(hourBuckets[hourKey].max_score, d.max_score);
+        hourBuckets[hourKey].flag_count += d.flag_count;
+        hourBuckets[hourKey].sum_score += d.avg_score * d.flag_count;
+        hourBuckets[hourKey].n += d.flag_count;
+      }
+      timeData = Object.values(hourBuckets).sort((a, b) => a.minute.localeCompare(b.minute));
+    }
+
+    const labels = timeData.map(d => {
+      const t = d.minute;
+      return t.length > 13 ? t.slice(11, 16) : t.slice(11, 13) + 'h';
+    });
+    const scores = timeData.map(d => d.max_score);
+    const counts = timeData.map(d => d.flag_count);
+
+    if (timelineChart) timelineChart.destroy();
+    const ctx1 = $('timelineChart').getContext('2d');
+    const gradient = ctx1.createLinearGradient(0, 0, 0, 220);
+    gradient.addColorStop(0, 'rgba(239, 68, 68, 0.25)');
+    gradient.addColorStop(0.5, 'rgba(239, 68, 68, 0.08)');
+    gradient.addColorStop(1, 'rgba(239, 68, 68, 0.0)');
+
+    timelineChart = new Chart(ctx1, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Max Score',
+          data: scores,
+          borderColor: '#ef4444',
+          backgroundColor: gradient,
+          fill: true,
+          tension: 0.35,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: '#ef4444',
+          pointHoverBorderColor: '#fff',
+          pointHoverBorderWidth: 2,
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { intersect: false, mode: 'index' },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(14,17,26,0.95)',
+            titleColor: '#e8ecf4', bodyColor: '#6b7a94',
+            borderColor: 'rgba(255,255,255,0.06)', borderWidth: 1,
+            padding: 10, cornerRadius: 8,
+            callbacks: {
+              afterLabel: (ctx) => `${counts[ctx.dataIndex]} flags`
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#3d4a5e', font: { size: 10 }, maxTicksLimit: 20, maxRotation: 45 },
+            grid: { color: 'rgba(255,255,255,0.03)' }
+          },
+          y: { min: 0, max: 10, ticks: { color: '#3d4a5e', font: { size: 10 }, stepSize: 2 }, grid: { color: 'rgba(255,255,255,0.03)' } }
+        }
+      }
+    });
+
+    // Severity Doughnut
+    const sv = await (await fetch('https://smart-log-analyzer-znk4.onrender.com/api/charts/severity')).json();
+    const sevLabels = sv.data.map(d => d.severity);
+    const sevCounts = sv.data.map(d => d.count);
+    const sevColors = sevLabels.map(s => chartColors[s] || '#6b7a94');
+
+    if (severityChart) severityChart.destroy();
+    severityChart = new Chart($('severityChart').getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: sevLabels,
+        datasets: [{ data: sevCounts, backgroundColor: sevColors, borderColor: 'transparent', borderWidth: 2 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: '68%',
+        plugins: {
+          legend: { position: 'bottom', labels: { color: '#6b7a94', font: { size: 11 }, padding: 12, usePointStyle: true, pointStyleWidth: 8 } },
+          tooltip: {
+            backgroundColor: 'rgba(14,17,26,0.95)',
+            titleColor: '#e8ecf4', bodyColor: '#6b7a94',
+            borderColor: 'rgba(255,255,255,0.06)', borderWidth: 1,
+            padding: 10, cornerRadius: 8,
+          }
+        }
+      }
+    });
+  } catch(e) { console.error('chart error', e); }
+}
+
+/* ─── Log Table ──────────────────────────────────────────────── */
+async function loadLogs() {
+  const sev = document.querySelector('#sevFilter').value;
+  const inv = document.querySelector('#invOnly').checked;
+  const search = $('searchInput').value.trim();
+  const offset = currentPage * PAGE_SIZE;
+
+  let url = `https://smart-log-analyzer-znk4.onrender.com/api/logs?limit=${PAGE_SIZE}&offset=${offset}`;
+  if (sev) url += `&severity=${sev}`;
+  if (inv) url += `&only_invalid=true`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
+
+  try {
+    const d = await (await fetch(url)).json();
+    totalRows = d.total;
+    const tbody = $('logBody');
+    tbody.innerHTML = '';
+
+    for (const l of d.logs) {
+      const tr = document.createElement('tr');
+      if (l.flag_id) tr.className = 'flagged';
+      const scoreHtml = l.anomaly_score
+        ? `<span class="score-cell ${scoreClass(l.anomaly_score)}">${l.anomaly_score.toFixed(1)}</span>` : '';
+      const aiBadge = l.ai_status === 'done'
+        ? '<span class="badge badge-ai">AI ✓</span>'
+        : (l.flag_id && l.ai_status === 'pending' ? '<span class="badge badge-pending">AI…</span>' : '');
+
+      tr.innerHTML = `
+        <td>${l.flag_id ? '🚩' : ''}${l.valid ? '' : '⚠️'}</td>
+        <td>${l.timestamp || '—'}</td>
+        <td>${escHtml(l.source_ip || '—')}</td>
+        <td>${escHtml(l.event_type || '—')}</td>
+        <td>${l.status_code ?? '—'}</td>
+        <td><span class="sev ${l.severity || ''}">${l.severity || '—'}</span></td>
+        <td>${escHtml(l.user_agent || '—')}${aiBadge}</td>
+        <td>${escHtml(l.location || '—')}</td>
+        <td>${scoreHtml}</td>`;
+      tr.onclick = () => showDetail(l);
+      tbody.appendChild(tr);
+    }
+
+    // Pagination
+    const totalPages = Math.ceil(totalRows / PAGE_SIZE);
+    if (totalRows > PAGE_SIZE) {
+      $('pagination').style.display = 'flex';
+      $('prevBtn').disabled = currentPage === 0;
+      $('nextBtn').disabled = currentPage >= totalPages - 1;
+      $('pageInfo').textContent = `Page ${currentPage + 1} of ${totalPages} · ${totalRows.toLocaleString()} entries`;
+    } else {
+      $('pagination').style.display = totalRows > 0 ? 'flex' : 'none';
+      if (totalRows > 0) $('pageInfo').textContent = `${totalRows.toLocaleString()} entries`;
+      $('prevBtn').disabled = true;
+      $('nextBtn').disabled = true;
+    }
+  } catch(e) { console.error('loadLogs error', e); }
+}
+
+function changePage(dir) {
+  const maxPage = Math.ceil(totalRows / PAGE_SIZE) - 1;
+  currentPage = Math.max(0, Math.min(maxPage, currentPage + dir));
+  loadLogs();
+  document.querySelector('.table-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ─── Detail Modal ───────────────────────────────────────────── */
+function showDetail(l) {
+  const reasons = (typeof l.reasons === 'string' ? (() => { try { return JSON.parse(l.reasons); } catch { return []; } })() : l.reasons) || [];
+
+  let aiHtml = '';
+  if (l.flag_id) {
+    if (l.ai_explanation) {
+      aiHtml = `
+        <div class="ai-block"><div class="ai-label">AI Explanation</div>${escHtml(l.ai_explanation)}</div>
+        <div class="ai-block"><div class="ai-label">Likely Root Cause</div>${escHtml(l.ai_root_cause || '')}</div>
+        <div class="ai-block"><div class="ai-label">Recommended Next Step</div>${escHtml(l.ai_next_step || '')}</div>`;
+    } else {
+      aiHtml = `<div class="ai-block warning">
+        <div class="ai-label">${l.ai_status === 'error' ? 'AI Failed' : 'Queued'}</div>
+        ${l.ai_status === 'error' ? 'Explanation failed — try "Explain Flagged" again.' : 'Waiting for AI explanation…'}</div>`;
+    }
+  }
+
+  $('modalTitle').innerHTML = `${l.flag_id ? '🚩 Flagged Entry' : 'Log Entry'} ${l.anomaly_score ? `<span style="color:var(--red);font-size:14px">— score ${l.anomaly_score.toFixed(1)}/10</span>` : ''}`;
+
+  $('modalBody').innerHTML = `
+    ${reasons.length ? `<div class="modal-section">
+      <div class="modal-label">Why It Was Flagged</div>
+      <div>${reasons.map(r => `<span class="reason-chip">${escHtml(r)}</span>`).join('')}</div>
+    </div>` : ''}
+    <div class="modal-section">
+      <div class="modal-label">Raw Log Line</div>
+      <div class="modal-raw"><button class="copy-btn" onclick="navigator.clipboard.writeText(this.parentElement.querySelector('code').textContent);this.textContent='Copied!'">Copy</button><code>${escHtml(l.raw_line || l.message || '')}</code></div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-label">Parsed Fields</div>
+      <div class="modal-fields">
+        <div class="modal-field-item"><div class="mfl">Timestamp</div>${l.timestamp || '—'}</div>
+        <div class="modal-field-item"><div class="mfl">Source IP</div>${escHtml(l.source_ip || '—')}</div>
+        <div class="modal-field-item"><div class="mfl">Request Type</div>${escHtml(l.event_type || '—')}</div>
+        <div class="modal-field-item"><div class="mfl">Status Code</div>${l.status_code ?? '—'}</div>
+        <div class="modal-field-item"><div class="mfl">Severity</div>${l.severity || '—'}</div>
+        <div class="modal-field-item"><div class="mfl">User Agent</div>${escHtml(l.user_agent || '—')}</div>
+        <div class="modal-field-item"><div class="mfl">Session ID</div>${escHtml(l.session_id || '—')}</div>
+        <div class="modal-field-item"><div class="mfl">Location</div>${escHtml(l.location || '—')}</div>
+      </div>
+    </div>
+    ${l.validation_error ? `<div class="modal-section"><div class="modal-label">Validation Issue</div><span style="color:var(--amber)">${escHtml(l.validation_error)}</span></div>` : ''}
+    ${aiHtml}`;
+
+  $('modal').classList.add('active');
+}
+
+function closeModal() { $('modal').classList.remove('active'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+/* ─── Actions ────────────────────────────────────────────────── */
+async function ingestSample() {
+  toast('Loading sample dataset…');
+  try {
+    const r = await (await fetch('https://smart-log-analyzer-znk4.onrender.com/api/ingest/sample', { method: 'POST' })).json();
+    toast(`Loaded ${r.inserted} entries, flagged ${r.flagged} anomalies`);
+    currentPage = 0;
+    await Promise.all([refreshStats(), loadLogs(), refreshCharts()]);
+  } catch(e) { toast('Failed to load sample data'); }
+}
+
+$('fileInput').onchange = async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  toast(`Uploading ${file.name}…`);
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await (await fetch('https://smart-log-analyzer-znk4.onrender.com/api/ingest/file', { method: 'POST', body: fd })).json();
+    toast(`Loaded ${r.inserted} entries, flagged ${r.flagged}, ${r.skipped_invalid} invalid`);
+    currentPage = 0;
+    await Promise.all([refreshStats(), loadLogs(), refreshCharts()]);
+  } catch(e) { toast('Failed to upload file'); }
+};
+
+async function explainNow() {
+  toast('Asking AI to explain flagged entries…');
+  try {
+    const r = await (await fetch('https://smart-log-analyzer-znk4.onrender.com/api/explain', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"limit":10}' })).json();
+    toast(`Explained ${r.explained} entries, ${r.remaining} remaining`);
+    await Promise.all([refreshStats(), loadLogs()]);
+  } catch(e) { toast('AI explanation failed — check API key'); }
+}
+
+/* ─── Init ───────────────────────────────────────────────────── */
+refreshStats();
+loadLogs();
+refreshCharts();
+setInterval(() => refreshStats(), 8000);
+</script>
+</body>
+</html>
